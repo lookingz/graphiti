@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Annotated
 
@@ -5,7 +6,6 @@ from fastapi import Depends, HTTPException
 from graphiti_core import Graphiti  # type: ignore
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient  # type: ignore
 from graphiti_core.driver.driver import GraphDriver  # type: ignore
-from graphiti_core.driver.falkordb_driver import FalkorDriver  # type: ignore
 from graphiti_core.driver.neo4j_driver import Neo4jDriver  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
 from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig  # type: ignore
@@ -116,7 +116,6 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     embedder = OpenAIEmbedder(config=embedder_config)
 
     # Reranker configuration
-    # Use the same model as LLM if not specified, to avoid defaulting to gpt-4.1-nano
     reranker_model = llm_model
     logger.info(f'Initializing Reranker: model={reranker_model}, base_url={llm_base_url}')
 
@@ -126,12 +125,22 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     # Database driver selection
     logger.info(f'Initializing Database: backend={settings.db_backend}')
     if settings.db_backend == 'falkordb':
-        driver = FalkorDriver(
-            host=settings.falkordb_host,
-            port=settings.falkordb_port,
-            username=settings.falkordb_user,
-            password=settings.falkordb_password,
-        )
+        try:
+            from graphiti_core.driver.falkordb_driver import FalkorDriver
+
+            driver = FalkorDriver(
+                host=settings.falkordb_host,
+                port=settings.falkordb_port,
+                username=settings.falkordb_user,
+                password=settings.falkordb_password,
+            )
+        except ImportError:
+            logger.error(
+                "falkordb package not found. Please install with 'pip install graphiti-core[falkordb]'"
+            )
+            raise HTTPException(
+                status_code=500, detail='FalkorDB driver dependencies missing'
+            ) from None
     else:
         # Default to Neo4j
         driver = Neo4jDriver(
@@ -152,8 +161,15 @@ async def get_graphiti(settings: ZepEnvDep):
 
 
 async def initialize_graphiti(settings: ZepEnvDep):
-    client = create_graphiti_client(settings)
-    await client.build_indices_and_constraints()
+    # Give the DB a moment to stabilize in container environments
+    if settings.db_backend == 'falkordb':
+        await asyncio.sleep(2)
+
+    # We no longer manually call build_indices_and_constraints here
+    # as the Graphiti drivers handle this automatically on initialization.
+    # This prevents redundant "Index already exists" error noise in the logs.
+    logger.info('Database client initialized. Indices are being managed by the driver.')
+    create_graphiti_client(settings)
 
 
 def get_fact_result_from_edge(edge: EntityEdge):
