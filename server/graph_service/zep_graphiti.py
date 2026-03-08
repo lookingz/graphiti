@@ -91,13 +91,21 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     # LLM configuration
     llm_api_key = settings.api_key or settings.openai_api_key
     llm_base_url = settings.base_url or settings.openai_base_url
-    llm_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url, model=settings.model_name)
+    llm_model = settings.model_name
+
+    logger.info(f'Initializing LLM: model={llm_model}, base_url={llm_base_url}')
+
+    llm_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url, model=llm_model)
     llm_client = OpenAIClient(config=llm_config)
 
     # Embedder configuration
     emb_api_key = settings.embedding_api_key or settings.api_key or settings.openai_api_key
     emb_base_url = settings.embedding_base_url or settings.base_url or settings.openai_base_url
     emb_model = settings.embedding_model_name or 'text-embedding-3-small'
+
+    logger.info(
+        f'Initializing Embedder: model={emb_model}, dim={settings.embedding_dim}, base_url={emb_base_url}'
+    )
 
     embedder_config = OpenAIEmbedderConfig(
         api_key=emb_api_key,
@@ -108,11 +116,15 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     embedder = OpenAIEmbedder(config=embedder_config)
 
     # Reranker configuration
-    # OpenAIRerankerClient uses LLMConfig directly
-    reranker_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url)
+    # Use the same model as LLM if not specified, to avoid defaulting to gpt-4.1-nano
+    reranker_model = llm_model
+    logger.info(f'Initializing Reranker: model={reranker_model}, base_url={llm_base_url}')
+
+    reranker_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url, model=reranker_model)
     cross_encoder = OpenAIRerankerClient(config=reranker_config)
 
     # Database driver selection
+    logger.info(f'Initializing Database: backend={settings.db_backend}')
     if settings.db_backend == 'falkordb':
         driver = FalkorDriver(
             host=settings.falkordb_host,
