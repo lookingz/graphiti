@@ -48,15 +48,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev && \
     if [ -n "$GRAPHITI_VERSION" ]; then \
         if [ "$INSTALL_FALKORDB" = "true" ]; then \
-            uv pip install --system --upgrade "graphiti-core[falkordb]==$GRAPHITI_VERSION"; \
+            uv pip install --upgrade "graphiti-core[falkordb]==$GRAPHITI_VERSION" falkordb; \
         else \
-            uv pip install --system --upgrade "graphiti-core==$GRAPHITI_VERSION"; \
+            uv pip install --upgrade "graphiti-core==$GRAPHITI_VERSION"; \
         fi; \
     else \
         if [ "$INSTALL_FALKORDB" = "true" ]; then \
-            uv pip install --system --upgrade "graphiti-core[falkordb]"; \
+            uv pip install --upgrade "graphiti-core[falkordb]" falkordb; \
         else \
-            uv pip install --system --upgrade graphiti-core; \
+            uv pip install --upgrade graphiti-core; \
         fi; \
     fi
 
@@ -74,5 +74,5 @@ USER app
 ENV PORT=8000
 EXPOSE $PORT
 
-# Use uv run for execution
-CMD ["uv", "run", "uvicorn", "graph_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Execute uvicorn directly from the virtual environment
+CMD ["uvicorn", "graph_service.main:app", "--host", "0.0.0.0", "--port", "8000"]

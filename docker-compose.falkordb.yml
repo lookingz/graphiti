@@ -1,0 +1,52 @@
+services:
+  graph:
+    build:
+      context: .
+      args:
+        INSTALL_FALKORDB: "true"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthcheck')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      - API_KEY=${API_KEY:-${OPENAI_API_KEY}}
+      - BASE_URL=${BASE_URL}
+      - MODEL_NAME=${MODEL_NAME}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-1536}
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - DB_BACKEND=falkordb
+      - PORT=8000
+
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb_data:/data
+    environment:
+      - FALKORDB_ARGS=--port 6379 --cluster-enabled no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 1s
+      timeout: 10s
+      retries: 10
+      start_period: 3s
+
+volumes:
+  falkordb_data:
