@@ -3,10 +3,10 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from graphiti_core import Graphiti  # type: ignore
-from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient # type: ignore
-from graphiti_core.driver.driver import GraphDriver # type: ignore
-from graphiti_core.driver.neo4j_driver import Neo4jDriver # type: ignore
-from graphiti_core.driver.falkordb_driver import FalkorDriver # type: ignore
+from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient  # type: ignore
+from graphiti_core.driver.driver import GraphDriver  # type: ignore
+from graphiti_core.driver.falkordb_driver import FalkorDriver  # type: ignore
+from graphiti_core.driver.neo4j_driver import Neo4jDriver  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
 from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig  # type: ignore
 from graphiti_core.errors import EdgeNotFoundError, GroupsEdgesNotFoundError, NodeNotFoundError
@@ -25,13 +25,13 @@ class ZepGraphiti(Graphiti):
         llm_client: LLMClient | None = None,
         embedder: OpenAIEmbedder | None = None,
         cross_encoder: OpenAIRerankerClient | None = None,
-        graph_driver: GraphDriver | None = None
+        graph_driver: GraphDriver | None = None,
     ):
         super().__init__(
-            llm_client=llm_client, 
-            embedder=embedder, 
+            llm_client=llm_client,
+            embedder=embedder,
             cross_encoder=cross_encoder,
-            graph_driver=graph_driver
+            graph_driver=graph_driver,
         )
 
     async def save_entity_node(self, name: str, uuid: str, group_id: str, summary: str = ''):
@@ -100,42 +100,34 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     emb_model = settings.embedding_model_name or 'text-embedding-3-small'
 
     embedder_config = OpenAIEmbedderConfig(
-        api_key=emb_api_key, 
-        base_url=emb_base_url, 
+        api_key=emb_api_key,
+        base_url=emb_base_url,
         embedding_model=emb_model,
-        embedding_dim=settings.embedding_dim
+        embedding_dim=settings.embedding_dim,
     )
     embedder = OpenAIEmbedder(config=embedder_config)
 
     # Reranker configuration
     # OpenAIRerankerClient uses LLMConfig directly
-    reranker_config = LLMConfig(
-        api_key=llm_api_key,
-        base_url=llm_base_url
-    )
+    reranker_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url)
     cross_encoder = OpenAIRerankerClient(config=reranker_config)
 
     # Database driver selection
-    if settings.db_backend == "falkordb":
+    if settings.db_backend == 'falkordb':
         driver = FalkorDriver(
             host=settings.falkordb_host,
             port=settings.falkordb_port,
             username=settings.falkordb_user,
-            password=settings.falkordb_password
+            password=settings.falkordb_password,
         )
     else:
         # Default to Neo4j
         driver = Neo4jDriver(
-            uri=settings.neo4j_uri,
-            user=settings.neo4j_user,
-            password=settings.neo4j_password
+            uri=settings.neo4j_uri, user=settings.neo4j_user, password=settings.neo4j_password
         )
 
     return ZepGraphiti(
-        llm_client=llm_client,
-        embedder=embedder,
-        cross_encoder=cross_encoder,
-        graph_driver=driver
+        llm_client=llm_client, embedder=embedder, cross_encoder=cross_encoder, graph_driver=driver
     )
 
 
