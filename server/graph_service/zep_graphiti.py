@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
 from graphiti_core import Graphiti  # type: ignore
@@ -17,6 +17,10 @@ from graph_service.config import ZepEnvDep
 from graph_service.dto import FactResult
 
 logger = logging.getLogger(__name__)
+
+# 全局客户端单例，避免频繁打开关闭驱动
+_global_graphiti: Optional['ZepGraphiti'] = None
+_lock = asyncio.Lock()
 
 
 class ZepGraphiti(Graphiti):
@@ -93,9 +97,17 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
     llm_base_url = settings.base_url or settings.openai_base_url
     llm_model = settings.model_name
 
-    logger.info(f'Initializing LLM: model={llm_model}, base_url={llm_base_url}')
+    # 关键点：对于非 OpenAI 原生服务，我们需要指定小规模模型名。
+    # 默认回退到与主模型相同的名称，避免由于无法识别的默认值 "gpt-4.1-nano" 导致的 404
+    llm_small_model = settings.small_model_name or llm_model
 
-    llm_config = LLMConfig(api_key=llm_api_key, base_url=llm_base_url, model=llm_model)
+    logger.info(
+        f'Initializing LLM: model={llm_model}, small_model={llm_small_model}, base_url={llm_base_url}'
+    )
+
+    llm_config = LLMConfig(
+        api_key=llm_api_key, base_url=llm_base_url, model=llm_model, small_model=llm_small_model
+    )
     llm_client = OpenAIClient(config=llm_config)
 
     # Embedder configuration
@@ -153,23 +165,25 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
 
 
 async def get_graphiti(settings: ZepEnvDep):
-    client = create_graphiti_client(settings)
-    try:
-        yield client
-    finally:
-        await client.close()
+    global _global_graphiti
+    if _global_graphiti is None:
+        async with _lock:
+            if _global_graphiti is None:
+                _global_graphiti = create_graphiti_client(settings)
+
+    yield _global_graphiti
 
 
 async def initialize_graphiti(settings: ZepEnvDep):
-    # Give the DB a moment to stabilize in container environments
+    global _global_graphiti
     if settings.db_backend == 'falkordb':
         await asyncio.sleep(2)
 
-    # We no longer manually call build_indices_and_constraints here
-    # as the Graphiti drivers handle this automatically on initialization.
-    # This prevents redundant "Index already exists" error noise in the logs.
-    logger.info('Database client initialized. Indices are being managed by the driver.')
-    create_graphiti_client(settings)
+    async with _lock:
+        if _global_graphiti is None:
+            _global_graphiti = create_graphiti_client(settings)
+
+    logger.info('Database client initialized and persisted.')
 
 
 def get_fact_result_from_edge(edge: EntityEdge):
