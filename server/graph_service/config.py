@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     small_model_name: str | None = Field(None)
     embedding_model_name: str | None = Field(None)
     embedding_dim: int = Field(1536)
+    embedding_batch_size: int = Field(10)
 
     # Generic settings for OpenRouter or other providers
     api_key: str | None = Field(None)

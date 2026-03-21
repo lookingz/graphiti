@@ -8,7 +8,11 @@ from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerCli
 from graphiti_core.driver.driver import GraphDriver  # type: ignore
 from graphiti_core.driver.neo4j_driver import Neo4jDriver  # type: ignore
 from graphiti_core.edges import EntityEdge  # type: ignore
-from graphiti_core.embedder import OpenAIEmbedder, OpenAIEmbedderConfig  # type: ignore
+from graphiti_core.embedder import (  # type: ignore
+    EmbedderClient,
+    OpenAIEmbedder,
+    OpenAIEmbedderConfig,
+)
 from graphiti_core.errors import EdgeNotFoundError, GroupsEdgesNotFoundError, NodeNotFoundError
 from graphiti_core.llm_client import LLMClient, LLMConfig, OpenAIClient  # type: ignore
 from graphiti_core.nodes import EntityNode, EpisodicNode  # type: ignore
@@ -21,6 +25,23 @@ logger = logging.getLogger(__name__)
 # 全局客户端单例，避免频繁打开关闭驱动
 _global_graphiti: Optional['ZepGraphiti'] = None
 _lock = asyncio.Lock()
+
+
+class BatchLimitingEmbedder(EmbedderClient):
+    def __init__(self, inner: EmbedderClient, batch_size: int):
+        self._inner = inner
+        self._batch_size = max(1, batch_size)
+
+    async def create(self, input_data):
+        return await self._inner.create(input_data)
+
+    async def create_batch(self, input_data_list: list[str]) -> list[list[float]]:
+        if len(input_data_list) <= self._batch_size:
+            return await self._inner.create_batch(input_data_list)
+        out: list[list[float]] = []
+        for i in range(0, len(input_data_list), self._batch_size):
+            out.extend(await self._inner.create_batch(input_data_list[i : i + self._batch_size]))
+        return out
 
 
 class ZepGraphiti(Graphiti):
@@ -125,7 +146,9 @@ def create_graphiti_client(settings: ZepEnvDep) -> ZepGraphiti:
         embedding_model=emb_model,
         embedding_dim=settings.embedding_dim,
     )
-    embedder = OpenAIEmbedder(config=embedder_config)
+    embedder = BatchLimitingEmbedder(
+        OpenAIEmbedder(config=embedder_config), batch_size=settings.embedding_batch_size
+    )
 
     # Reranker configuration
     reranker_model = llm_model
